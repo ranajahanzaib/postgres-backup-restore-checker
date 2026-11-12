@@ -1,10 +1,17 @@
-Fixes #<issue_number_goes_here>
+## Summary
 
-> It's a good idea to open an issue first for discussion.
+Describe the change and the problem it addresses.
 
-**Description**
-A brief summary of what this PR does and why.
+## Validation
 
-- [ ] Tests pass
-- [ ] README updated if needed
-- [ ] No breaking changes (or described below)
+- [ ] `cargo fmt --all -- --check`
+- [ ] `cargo clippy --all-targets -- -D warnings`
+- [ ] `cargo test --all-targets`
+- [ ] Docker integration checks, when Docker is available
+
+## Compatibility and documentation
+
+- [ ] User-visible behavior and compatibility impact are described.
+- [ ] Documentation and examples are updated where needed.
+
+Related issue: <!-- optional; use Closes #123 when applicable -->
