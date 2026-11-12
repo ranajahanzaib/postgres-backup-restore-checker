@@ -1,0 +1,12 @@
+# Example values; paths are relative to the current working directory.
+postgres_major = "17"
+report_dir = "./reports"
+timeout = 600
+startup_timeout = 90
+check_timeout = 30
+jobs = 1
+single_transaction = false
+memory_limit = "2g"
+cpu_limit = 2.0
+max_backup_bytes = 10737418240
+expectations = "./examples/expectations.toml"

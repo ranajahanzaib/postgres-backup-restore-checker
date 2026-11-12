@@ -1,0 +1,30 @@
+[metadata]
+name = "Application recovery expectations"
+description = "Representative tables, structure, and data checks"
+
+[verification]
+require_nonempty_database = true
+require_valid_indexes = true
+require_validated_constraints = true
+run_amcheck = false
+required_schemas = ["public"]
+required_extensions = []
+required_indexes = ["public.customers.customers_pkey"]
+required_constraints = ["public.customers.customers_pkey"]
+
+[[tables]]
+name = "public.customers"
+required = true
+min_rows = 1
+
+[[tables]]
+name = "public.invoices"
+required = true
+min_rows = 1
+
+[[queries]]
+id = "invoice-records-present"
+description = "Check that the restored invoice table contains data"
+sql = "SELECT count(*) FROM public.invoices"
+min_integer = 1
+required = true
