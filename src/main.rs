@@ -491,7 +491,15 @@ async fn wait_postgres(container: &str, seconds: u64) -> Result<()> {
         loop {
             let output = Command::new("docker")
                 .kill_on_drop(true)
-                .args(["exec", container, "pg_isready", "-h", "127.0.0.1", "-U", "postgres"])
+                .args([
+                    "exec",
+                    container,
+                    "pg_isready",
+                    "-h",
+                    "127.0.0.1",
+                    "-U",
+                    "postgres",
+                ])
                 .output()
                 .await?;
             if output.status.success() {
@@ -738,7 +746,15 @@ async fn check(path: PathBuf, options: CheckOptions) -> Result<CheckResult> {
         let ready = tokio::time::timeout(std::time::Duration::from_secs(startup_timeout), async {
             loop {
                 let o = Command::new("docker")
-                    .args(["exec", &name, "pg_isready", "-h", "127.0.0.1", "-U", "postgres"])
+                    .args([
+                        "exec",
+                        &name,
+                        "pg_isready",
+                        "-h",
+                        "127.0.0.1",
+                        "-U",
+                        "postgres",
+                    ])
                     .output()
                     .await?;
                 if o.status.success() {
