@@ -409,7 +409,7 @@ async fn validate_archive(container: &str, path: &Path, kind: &str) -> Result<()
             "/tmp/pbrc-archive",
         ]);
     } else {
-        command.args(["exec", "-i", container, "pg_restore", "--list", "-"]);
+        command.args(["exec", "-i", container, "pg_restore", "--list"]);
     }
     command
         .kill_on_drop(true)
@@ -833,7 +833,6 @@ async fn check(path: PathBuf, options: CheckOptions) -> Result<CheckResult> {
                 "postgres",
                 "-d",
                 &target,
-                "-",
             ]);
             if single_transaction {
                 command.arg("--single-transaction");
