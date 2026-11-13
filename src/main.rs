@@ -1099,7 +1099,7 @@ async fn check(path: PathBuf, options: CheckOptions) -> Result<CheckResult> {
                 quote_qualified(&table)?
             );
             let actual = run(&[
-                "exec", &name, "psql", "-XAt", "-U", "postgres", "-d", &target, "-c", &q,
+                "exec", &name, "psql", "-qXAt", "-U", "postgres", "-d", &target, "-c", &q,
             ])
             .await?;
             let ok = actual.trim() == count.to_string();
@@ -1154,7 +1154,7 @@ async fn check(path: PathBuf, options: CheckOptions) -> Result<CheckResult> {
                     quote_qualified(&table_name)?
                 );
                 let actual = run(&[
-                    "exec", &name, "psql", "-XAt", "-U", "postgres", "-d", &target, "-c", &q,
+                    "exec", &name, "psql", "-qXAt", "-U", "postgres", "-d", &target, "-c", &q,
                 ])
                 .await?;
                 let count: u64 = actual
@@ -1312,7 +1312,7 @@ async fn check(path: PathBuf, options: CheckOptions) -> Result<CheckResult> {
                 "exec",
                 &name,
                 "psql",
-                "-XAt",
+                "-qXAt",
                 "-v",
                 "ON_ERROR_STOP=1",
                 "-U",
