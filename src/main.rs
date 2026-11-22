@@ -184,7 +184,11 @@ struct Check {
 }
 
 fn detect(p: &Path) -> Result<String> {
-    if std::fs::symlink_metadata(p)?.file_type().is_symlink() {
+    if std::fs::symlink_metadata(p)
+        .with_context(|| format!("cannot access {}", p.display()))?
+        .file_type()
+        .is_symlink()
+    {
         bail!("symbolic-link backups are not supported; provide the actual file or directory")
     }
     if p.is_dir() {
@@ -1845,41 +1849,54 @@ fn markdown(r: &CheckResult) -> String {
     out.push_str("\nRestore time is measured in this isolated test environment and does not guarantee production RTO.\n");
     out
 }
+fn exit_code_for_error(message: &str) -> i32 {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("unsupported")
+        || lower.contains("unrecognized")
+        || lower.contains("not found")
+        || lower.contains("cannot open")
+        || lower.contains("cannot access")
+        || lower.contains("cannot read")
+        || lower.contains("no such file")
+        || lower.contains("backup is empty")
+        || lower.contains("symbolic-link")
+        || lower.contains("not a pg_dump directory archive")
+        || lower.contains("gzip")
+        || lower.contains("above the configured limit")
+        || lower.contains("exceeds configured limit")
+        || lower.contains("no backup candidates found")
+    {
+        4
+    } else if lower.contains("invalid")
+        || lower.contains("parsing")
+        || lower.contains("requires")
+        || lower.contains("conflict")
+        || lower.contains("configuration")
+        || lower.contains("must be between")
+        || lower.contains("cannot set both")
+        || lower.contains("provide --")
+        || lower.contains("cannot combine")
+        || lower.contains("supported --postgres-major")
+        || lower.contains("must be a")
+    {
+        2
+    } else if lower.contains("docker") || lower.contains("daemon") {
+        3
+    } else if lower.contains("timed out")
+        || lower.contains("timeout")
+        || lower.contains("interrupted")
+    {
+        5
+    } else {
+        6
+    }
+}
 #[tokio::main]
 async fn main() {
     if let Err(e) = entry().await {
         let message = format!("{e:#}");
         eprintln!("pbrc: {message}");
-        let lower = message.to_ascii_lowercase();
-        let code = if lower.contains("unsupported")
-            || lower.contains("unrecognized")
-            || lower.contains("not found")
-            || lower.contains("cannot open")
-            || lower.contains("backup is empty")
-            || lower.contains("symbolic-link")
-            || lower.contains("not a pg_dump directory archive")
-            || lower.contains("gzip")
-        {
-            4
-        } else if lower.contains("docker") || lower.contains("daemon") {
-            3
-        } else if lower.contains("timed out")
-            || lower.contains("timeout")
-            || lower.contains("interrupted")
-        {
-            5
-        } else if lower.contains("invalid")
-            || lower.contains("parsing")
-            || lower.contains("requires")
-            || lower.contains("conflict")
-            || lower.contains("configuration")
-            || lower.contains("must be between")
-            || lower.contains("cannot set both")
-        {
-            2
-        } else {
-            6
-        };
+        let code = exit_code_for_error(&message);
         std::process::exit(code)
     }
 }
@@ -2022,7 +2039,8 @@ async fn entry() -> Result<()> {
                     bail!("--directory requires --latest")
                 };
                 let pattern = glob.as_deref().unwrap_or("*");
-                std::fs::read_dir(d)?
+                std::fs::read_dir(&d)
+                    .with_context(|| format!("cannot read directory {}", d.display()))?
                     .filter_map(|e| e.ok().map(|e| e.path()))
                     .filter(|p| {
                         is_backup_candidate(p)
@@ -2326,7 +2344,10 @@ async fn entry() -> Result<()> {
                 ReportCommand::Show { path } => (path, true),
                 ReportCommand::Summary { path } => (path, false),
             };
-            let r: CheckResult = serde_json::from_slice(&std::fs::read(p)?)?;
+            let data =
+                std::fs::read(&p).with_context(|| format!("cannot read report {}", p.display()))?;
+            let r: CheckResult = serde_json::from_slice(&data)
+                .with_context(|| format!("parsing report {}", p.display()))?;
             if show {
                 print!("{}", markdown(&r));
             } else {
@@ -2543,5 +2564,147 @@ mod tests {
             classify_error("restore jobs must be between 1 and 32"),
             "INVALID_CONFIGURATION"
         );
+    }
+
+    #[test]
+    fn exit_code_mapping_matches_documented_policy() {
+        // Code 4: Unsupported, missing or unreadable input
+        assert_eq!(exit_code_for_error("cannot open file.dump"), 4);
+        assert_eq!(
+            exit_code_for_error("No such file or directory (os error 2)"),
+            4
+        );
+        assert_eq!(
+            exit_code_for_error("cannot access backup.dump: No such file"),
+            4
+        );
+        assert_eq!(exit_code_for_error("cannot read directory ./backups"), 4);
+        assert_eq!(exit_code_for_error("no backup candidates found"), 4);
+        assert_eq!(
+            exit_code_for_error("unsupported or unrecognized backup format"),
+            4
+        );
+        assert_eq!(exit_code_for_error("backup is empty"), 4);
+        assert_eq!(
+            exit_code_for_error("symbolic-link backups are not supported"),
+            4
+        );
+        assert_eq!(
+            exit_code_for_error("directory is not a pg_dump directory archive"),
+            4
+        );
+        assert_eq!(
+            exit_code_for_error("invalid or truncated gzip SQL stream"),
+            4
+        );
+        assert_eq!(
+            exit_code_for_error("decompressed SQL exceeds configured limit of 100 bytes"),
+            4
+        );
+
+        // Code 3: Docker / environment failure
+        assert_eq!(
+            exit_code_for_error("Docker daemon is unavailable; start Docker"),
+            3
+        );
+        assert_eq!(
+            exit_code_for_error("Docker CLI unavailable; install Docker"),
+            3
+        );
+
+        // Code 5: Timeout / interrupted
+        assert_eq!(exit_code_for_error("PostgreSQL startup timed out"), 5);
+        assert_eq!(exit_code_for_error("interrupted by SIGINT"), 5);
+
+        // Code 2: Invalid arguments or configuration
+        assert_eq!(exit_code_for_error("provide --run-id or --stale"), 2);
+        assert_eq!(
+            exit_code_for_error("provide --backup or --directory with --latest"),
+            2
+        );
+        assert_eq!(exit_code_for_error("--directory requires --latest"), 2);
+        assert_eq!(
+            exit_code_for_error("config cannot set both postgres_image and postgres_major"),
+            2
+        );
+        assert_eq!(
+            exit_code_for_error("supported --postgres-major values are 16, 17, and 18"),
+            2
+        );
+        assert_eq!(
+            exit_code_for_error("startup timeout must be between 1 and 3600 seconds"),
+            2
+        );
+        assert_eq!(exit_code_for_error("invalid Docker memory limit `2x`"), 2);
+        assert_eq!(
+            exit_code_for_error("invalid table identifier `users; DROP TABLE`"),
+            2
+        );
+
+        // Code 6: Internal unexpected error
+        assert_eq!(exit_code_for_error("unexpected internal state anomaly"), 6);
+    }
+
+    #[test]
+    fn detect_nonexistent_file_returns_not_found_error() {
+        let nonexistent =
+            std::env::temp_dir().join(format!("pbrc-missing-{}.dump", Uuid::new_v4()));
+        let err = format!("{:#}", detect(&nonexistent).unwrap_err());
+        assert!(err.contains("cannot access"));
+        let lower = err.to_ascii_lowercase();
+        assert!(
+            lower.contains("no such file")
+                || lower.contains("not found")
+                || lower.contains("os error 2")
+        );
+    }
+
+    #[test]
+    fn quote_qualified_validates_and_escapes() {
+        assert_eq!(quote_qualified("users").unwrap(), "\"users\"");
+        assert_eq!(
+            quote_qualified("public.customers").unwrap(),
+            "\"public\".\"customers\""
+        );
+        assert_eq!(
+            quote_qualified("app_data.table_1").unwrap(),
+            "\"app_data\".\"table_1\""
+        );
+        assert!(quote_qualified("").is_err());
+        assert!(quote_qualified("a.b.c").is_err());
+        assert!(quote_qualified("users; DROP TABLE users").is_err());
+        assert!(quote_qualified("users'--").is_err());
+    }
+
+    #[test]
+    fn validate_memory_limit_handles_various_formats() {
+        assert!(validate_memory_limit("512m").is_ok());
+        assert!(validate_memory_limit("2g").is_ok());
+        assert!(validate_memory_limit("1024kb").is_ok());
+        assert!(validate_memory_limit("1t").is_ok());
+        assert!(validate_memory_limit("0g").is_err());
+        assert!(validate_memory_limit("-2g").is_err());
+        assert!(validate_memory_limit("2gigabytes").is_err());
+        assert!(validate_memory_limit("invalid").is_err());
+    }
+
+    #[test]
+    fn is_backup_candidate_identifies_files_and_directories() {
+        let dir = std::env::temp_dir().join(format!("pbrc-cand-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("backup.dump");
+        std::fs::write(&file, b"content").unwrap();
+        assert!(is_backup_candidate(&file));
+
+        let invalid_dir = dir.join("not-an-archive");
+        std::fs::create_dir_all(&invalid_dir).unwrap();
+        assert!(!is_backup_candidate(&invalid_dir));
+
+        let valid_dir = dir.join("pg-archive");
+        std::fs::create_dir_all(&valid_dir).unwrap();
+        std::fs::write(valid_dir.join("toc.dat"), b"toc").unwrap();
+        assert!(is_backup_candidate(&valid_dir));
+
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
